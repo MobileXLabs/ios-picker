@@ -25,6 +25,7 @@ Pod::Spec.new do |s|
   s.osx.prefix_header_file  = 'Resources-Mac/FPPicker-Mac-Prefix.pch'
 
   shared_public_header_files = %w(
+    FPPicker/Shared/FPSource.h
     FPPicker/Shared/FPSource+SupportedSources.h
     FPPicker/Shared/FPExternalHeaders.h
     FPPicker/Shared/FPConfig.h
