@@ -44,10 +44,9 @@
 static const NSInteger CELL_FIRST_TAG = 1000;
 static const CGFloat ROW_HEIGHT = 44.0;
 
-- (id)initWithNibName:(NSString *)nibNameOrNil bundle:(NSBundle *)nibBundleOrNil
+- (instancetype)init
 {
-    self = [super initWithNibName:nibNameOrNil
-                           bundle:nibBundleOrNil];
+    self = [super init];
 
     if (self)
     {
@@ -58,13 +57,6 @@ static const CGFloat ROW_HEIGHT = 44.0;
     }
 
     return self;
-}
-
-- (void)backButtonAction
-{
-    [self.contentPreloadOperationQueue cancelAllOperations];
-    [self.contentLoadOperationQueue cancelAllOperations];
-    [self.navigationController popViewControllerAnimated:YES];
 }
 
 - (void)viewDidLoad
@@ -108,11 +100,6 @@ static const CGFloat ROW_HEIGHT = 44.0;
         self.tableView.allowsSelection = YES;
         self.tableView.allowsMultipleSelection = YES;
     }
-
-    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Back"
-                                                                             style:UIBarButtonItemStylePlain
-                                                                            target:self
-                                                                            action:@selector(backButtonAction)];
 }
 
 - (void)viewDidUnload
@@ -134,6 +121,14 @@ static const CGFloat ROW_HEIGHT = 44.0;
 {
     [self setupLayoutConstants];
     [super viewWillAppear:animated];
+}
+
+- (void)viewWillDisappear:(BOOL)animated
+{
+    [self.contentPreloadOperationQueue cancelAllOperations];
+    [self.contentLoadOperationQueue cancelAllOperations];
+    [self resetTableViewSelectionAndEnableUserInteraction];
+    [super viewWillDisappear:animated];
 }
 
 - (void)viewDidAppear:(BOOL)animated
@@ -193,7 +188,7 @@ static const CGFloat ROW_HEIGHT = 44.0;
         NSString *placeHolderImageFilePath = [[FPUtils frameworkBundle] pathForResource:@"placeholder"
                                                                                  ofType:@"png"];
 
-        _placeholderImage = [UIImage imageWithContentsOfFile:placeHolderImageFilePath];
+        _placeholderImage = [[UIImage imageWithContentsOfFile:placeHolderImageFilePath] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
     }
 
     return _placeholderImage;
@@ -276,6 +271,10 @@ static const CGFloat ROW_HEIGHT = 44.0;
     {
         cell = [[FPThumbCell alloc] initWithStyle:UITableViewCellStyleDefault
                                   reuseIdentifier :cellIdentifier];
+
+        UIView *bgColorView = [UIView new];
+        bgColorView.backgroundColor = [FPTableViewCell appearance].selectedBackgroundColor;
+        cell.selectedBackgroundView = bgColorView;
     }
     else
     {
@@ -441,7 +440,7 @@ static const CGFloat ROW_HEIGHT = 44.0;
         return cell;
     }
 
-    cell.selectionStyle = UITableViewCellSelectionStyleBlue;
+    cell.selectionStyle = UITableViewCellSelectionStyleDefault;
 
     NSMutableDictionary *obj = self.contents[itemIndex];
 
@@ -451,13 +450,10 @@ static const CGFloat ROW_HEIGHT = 44.0;
     if (YES == [obj[@"is_dir"] boolValue])
     {
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-        cell.textLabel.textColor = [UIColor blackColor];
 
         [self fpPreloadContents:obj[@"link_path"]
                         forCell:cell.tag];
     }
-
-    NSLog(@"Thumb exists%@", obj[@"thumb_exists"]);
 
     BOOL thumbExists = [obj[@"thumb_exists"] boolValue];
     BOOL isDir = [obj[@"is_dir"] boolValue];
@@ -473,7 +469,7 @@ static const CGFloat ROW_HEIGHT = 44.0;
             NSString *iconFilePath = [[FPUtils frameworkBundle] pathForResource:@"glyphicons_144_folder_open"
                                                                          ofType:@"png"];
 
-            cell.imageView.image = [UIImage imageWithContentsOfFile:iconFilePath];
+            cell.imageView.image = [[UIImage imageWithContentsOfFile:iconFilePath] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
             cell.imageView.contentMode = UIViewContentModeCenter;
         }
         else
@@ -481,7 +477,7 @@ static const CGFloat ROW_HEIGHT = 44.0;
             NSString *placeHolderImageFilePath = [[FPUtils frameworkBundle] pathForResource:@"placeholder"
                                                                                      ofType:@"png"];
 
-            UIImage *placeHolderImage = [UIImage imageWithContentsOfFile:placeHolderImageFilePath];
+            UIImage *placeHolderImage = [[UIImage imageWithContentsOfFile:placeHolderImageFilePath] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
 
             [cell.imageView setImageWithURL:[NSURL URLWithString:urlString]
                            placeholderImage:placeHolderImage];
@@ -496,14 +492,14 @@ static const CGFloat ROW_HEIGHT = 44.0;
             NSString *iconFilePath = [[FPUtils frameworkBundle] pathForResource:@"glyphicons_144_folder_open"
                                                                          ofType:@"png"];
 
-            cell.imageView.image = [UIImage imageWithContentsOfFile:iconFilePath];
+            cell.imageView.image = [[UIImage imageWithContentsOfFile:iconFilePath] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
         }
         else
         {
             NSString *iconFilePath = [[FPUtils frameworkBundle] pathForResource:@"glyphicons_036_file"
                                                                          ofType:@"png"];
 
-            cell.imageView.image = [UIImage imageWithContentsOfFile:iconFilePath];
+            cell.imageView.image = [[UIImage imageWithContentsOfFile:iconFilePath] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
         }
 
         cell.imageView.contentMode = UIViewContentModeCenter;
@@ -511,14 +507,12 @@ static const CGFloat ROW_HEIGHT = 44.0;
 
     if (YES == [obj[@"disabled"] boolValue])
     {
-        cell.textLabel.textColor = [UIColor grayColor];
+        UIColor *existingCellColor = cell.textLabel.textColor;
+        UIColor *newCellColor = [existingCellColor colorWithAlphaComponent:0.5];
+
+        cell.textLabel.textColor = newCellColor;
         cell.imageView.alpha = 0.5;
         cell.userInteractionEnabled = NO;
-    }
-
-    if (isDir)
-    {
-        cell.selectionStyle = UITableViewCellSelectionStyleNone;
     }
 
     return cell;
@@ -647,20 +641,10 @@ static const CGFloat ROW_HEIGHT = 44.0;
                     error.code == kCFURLErrorRedirectToNonExistentLocation ||
                     error.code == kCFURLErrorUnsupportedURL)
                 {
-                    [MBProgressHUD hideAllHUDsForView:self.navigationController.view
-                                             animated:YES];
-
-                    [self.navigationController popViewControllerAnimated:YES];
-
-                    UIAlertView *message;
-
-                    message = [[UIAlertView alloc] initWithTitle:@"Internet Connection"
-                                                         message:@"You aren't connected to the internet so we can't get your files."
-                                                        delegate:nil
-                                               cancelButtonTitle:@"OK"
-                                               otherButtonTitles:nil];
-
-                    [message show];
+                    [self fpLoadResponseFailureWithError:error
+                                                 handler: ^{
+                        [self resetTableViewSelectionAndEnableUserInteraction];
+                    }];
                 }
                 else
                 {
@@ -757,6 +741,7 @@ static const CGFloat ROW_HEIGHT = 44.0;
 
     NSURLRequest *request = [FPLibrary requestForLoadPath:loadpath
                                                withFormat:@"info"
+                                              queryString:nil
                                              andMimetypes:self.source.mimetypes
                                               cachePolicy:policy];
 
@@ -770,8 +755,19 @@ static const CGFloat ROW_HEIGHT = 44.0;
 
     AFRequestOperationFailureBlock failureOperationBlock = ^(AFHTTPRequestOperation *operation,
                                                              NSError *error) {
-        [self fpLoadResponseFailureAtPath:loadpath
-                                withError:error];
+        if (error.code == kCFURLErrorUserCancelledAuthentication)
+        {
+            [self fpLoadContents:loadpath
+                     cachePolicy:NSURLRequestReloadIgnoringCacheData];
+        }
+        else
+        {
+            [self fpLoadResponseFailureWithError:error
+                                         handler: ^{
+                [self resetTableViewSelectionAndEnableUserInteraction];
+                [self.navigationController popViewControllerAnimated:YES];
+            }];
+        }
 
         [self.refreshControl endRefreshing];
     };
@@ -854,38 +850,47 @@ static const CGFloat ROW_HEIGHT = 44.0;
     [self afterReload];
 }
 
-- (void)fpLoadResponseFailureAtPath:(NSString *)loadpath
-                          withError:(NSError *)error
+- (void)fpLoadResponseFailureWithError:(NSError *)error
+                               handler:(void (^ __nullable)(void))handler
 {
-    if (self.contentLoadOperationQueue.isSuspended &&
-        self.contentPreloadOperationQueue.isSuspended)
+    if (error.code == kCFURLErrorCancelled)
     {
-        [MBProgressHUD hideAllHUDsForView:self.navigationController.view
-                                 animated:YES];
+        return;
     }
 
-    NSLog(@"Error: %@", error);
+    [MBProgressHUD hideAllHUDsForView:self.navigationController.view
+                             animated:YES];
 
-    //NSLog(@"Loading Contents: %@", JSON);
-
-    if (error.code == kCFURLErrorRedirectToNonExistentLocation ||
-        error.code == kCFURLErrorUnsupportedURL)
+    if ([FPUtils currentAppIsAppExtension])
     {
-        [self.navigationController popViewControllerAnimated:YES];
+        NSForceLog(@"ERROR: %@", error);
 
-        UIAlertView *message = [[UIAlertView alloc] initWithTitle:@"Internet Connection"
-                                                          message:@"You aren't connected to the internet so we can't get your files."
-                                                         delegate:nil
-                                                cancelButtonTitle:@"OK"
-                                                otherButtonTitles:nil];
-
-        [message show];
+        if (handler)
+        {
+            handler();
+        }
     }
-
-    if (error.code == kCFURLErrorUserCancelledAuthentication)
+    else
     {
-        [self fpLoadContents:loadpath
-                 cachePolicy:NSURLRequestReloadIgnoringCacheData];
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Internet Connection"
+                                                                       message:error.localizedDescription
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+
+        UIAlertAction *ok = [UIAlertAction actionWithTitle:@"OK"
+                                                     style:UIAlertActionStyleDefault
+                                                   handler: ^(UIAlertAction * action)
+        {
+            if (handler)
+            {
+                handler();
+            }
+        }];
+
+        [alert addAction:ok];
+
+        [self presentViewController:alert
+                           animated:YES
+                         completion:nil];
     }
 }
 
@@ -918,6 +923,7 @@ static const CGFloat ROW_HEIGHT = 44.0;
 {
     NSURLRequest *request = [FPLibrary requestForLoadPath:loadpath
                                                withFormat:@"info"
+                                              queryString:nil
                                              andMimetypes:self.source.mimetypes
                                               cachePolicy:policy];
 
@@ -934,14 +940,25 @@ static const CGFloat ROW_HEIGHT = 44.0;
 {
     NSLog(@"Next page: %@", self.nextPage);
 
-    NSString *nextPageParam = [NSString stringWithFormat:@"&start=%@", [FPUtils urlEncodeString:self.nextPage]];
+    NSURLComponents *urlComponents = [NSURLComponents componentsWithString:self.path];
 
-    NSLog(@"nextpageparm: %@", nextPageParam);
+    NSArray *queryItems = @[
+        [NSURLQueryItem queryItemWithName:@"start" value:[FPUtils urlEncodeString:self.nextPage]]
+    ];
 
-    NSURLRequest *request = [FPLibrary requestForLoadPath:self.path
+    if (urlComponents.queryItems)
+    {
+        urlComponents.queryItems = [urlComponents.queryItems arrayByAddingObjectsFromArray:queryItems];
+    }
+    else
+    {
+        urlComponents.queryItems = queryItems;
+    }
+
+    NSURLRequest *request = [FPLibrary requestForLoadPath:urlComponents.path
                                                withFormat:@"info"
+                                              queryString:urlComponents.query
                                              andMimetypes:self.source.mimetypes
-                                              byAppending:nextPageParam
                                               cachePolicy:NSURLRequestReloadIgnoringCacheData];
 
     AFRequestOperationSuccessBlock successOperationBlock = ^(AFHTTPRequestOperation *operation,
@@ -977,7 +994,7 @@ static const CGFloat ROW_HEIGHT = 44.0;
 
     AFRequestOperationFailureBlock failureOperationBlock = ^(AFHTTPRequestOperation *operation,
                                                              NSError *error) {
-        NSLog(@"Error: %@", error);
+        NSForceLog(@"ERROR: %@", error);
 
         self.nextPage = nil;
 
@@ -1117,24 +1134,12 @@ static const CGFloat ROW_HEIGHT = 44.0;
         };
 
         FPFetchObjectFailureBlock failureBlock = ^(NSError *error) {
-            NSForceLog(@"FAIL %@", error);
+            NSForceLog(@"ERROR: %@", error);
 
-            if (error.code == kCFURLErrorNotConnectedToInternet ||
-                error.code == kCFURLErrorRedirectToNonExistentLocation ||
-                error.code == kCFURLErrorUnsupportedURL)
-            {
-                [self.navigationController popViewControllerAnimated:YES];
-
-                UIAlertView *message;
-
-                message = [[UIAlertView alloc] initWithTitle:@"Internet Connection"
-                                                     message:@"You aren't connected to the internet so we can't get your files."
-                                                    delegate:nil
-                                           cancelButtonTitle:@"OK"
-                                           otherButtonTitles:nil];
-
-                [message show];
-            }
+            [self fpLoadResponseFailureWithError:error
+                                         handler: ^{
+                [self resetTableViewSelectionAndEnableUserInteraction];
+            }];
 
             dispatch_async(dispatch_get_main_queue(), ^{
                 [MBProgressHUD hideAllHUDsForView:self.navigationController.view
@@ -1154,6 +1159,21 @@ static const CGFloat ROW_HEIGHT = 44.0;
                   failure:failureBlock
                  progress:progressBlock];
     }
+}
+
+- (void)resetTableViewSelectionAndEnableUserInteraction
+{
+    self.tableView.userInteractionEnabled = YES;
+
+    [self.selectedObjects removeAllObjects];
+
+    for (NSIndexPath *indexPath in self.tableView.indexPathsForSelectedRows)
+    {
+        [self.tableView deselectRowAtIndexPath:indexPath
+                                      animated:YES];
+    }
+
+    [self updateUploadButton:0];
 }
 
 - (void)toggleSelectionOnThumbnailView:(UIView *)view
@@ -1203,19 +1223,9 @@ static const CGFloat ROW_HEIGHT = 44.0;
         self.view.userInteractionEnabled = NO;
     });
 
-    BOOL shouldDownload = YES;
-
-    if ([self.fpdelegate isKindOfClass:[FPPickerController class]])
-    {
-        FPPickerController *pickerC = (FPPickerController *)self.fpdelegate;
-
-        shouldDownload = [pickerC shouldDownload];
-    }
-
     [FPLibrary requestObjectMediaInfo:obj
                            withSource:self.source
                   usingOperationQueue:self.contentPreloadOperationQueue
-                       shouldDownload:shouldDownload
                               success:success
                               failure:failure
                              progress:progress];
@@ -1286,17 +1296,29 @@ static const CGFloat ROW_HEIGHT = 44.0;
         [MBProgressHUD hideAllHUDsForView:self.navigationController.view
                                  animated:YES];
 
-        NSLog(@"error: %@", error);
+        if (![FPUtils currentAppIsAppExtension])
+        {
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Logout Failure"
+                                                                           message:@"Hmm. We weren't able to logout."
+                                                                    preferredStyle:UIAlertControllerStyleAlert];
 
-        UIAlertView *message;
+            UIAlertAction *ok = [UIAlertAction actionWithTitle:@"OK"
+                                                         style:UIAlertActionStyleDefault
+                                                       handler: ^(UIAlertAction * action)
+            {
+                // NO-OP
+            }];
 
-        message = [[UIAlertView alloc] initWithTitle:@"Logout Failure"
-                                             message:@"Hmm. We weren't able to logout."
-                                            delegate:nil
-                                   cancelButtonTitle:@"OK"
-                                   otherButtonTitles:nil];
+            [alert addAction:ok];
 
-        [message show];
+            [self presentViewController:alert
+                               animated:YES
+                             completion:nil];
+        }
+        else
+        {
+            NSForceLog(@"ERROR: %@", error);
+        }
     };
 
     AFHTTPRequestOperation *operation;
@@ -1331,7 +1353,7 @@ static const CGFloat ROW_HEIGHT = 44.0;
 {
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(fpAuthResponse)
-                                                 name:@"auth"
+                                                 name:FPPickerDidAuthenticateAgainstSourceNotification
                                                object:nil];
 
     FPAuthController *authView = [[FPAuthController alloc] initWithSource:self.source];

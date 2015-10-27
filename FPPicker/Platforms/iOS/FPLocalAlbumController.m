@@ -8,6 +8,9 @@
 
 #import "FPLocalAlbumController.h"
 #import "FPLocalController.h"
+#import "FPTableViewCell.h"
+
+@import Photos;
 
 @interface FPLocalAlbumController ()
 
@@ -41,6 +44,8 @@
 - (void)viewWillAppear:(BOOL)animated
 {
     self.tableView.frame = self.view.bounds;
+    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+
     [self loadAlbumData];
 
     [super viewWillAppear:animated];
@@ -70,63 +75,64 @@
                                                              CGRectGetMidY(bounds) - 60,
                                                              CGRectGetWidth(bounds),
                                                              30)];
-    _emptyLabel.textColor = [UIColor grayColor];
     _emptyLabel.textAlignment = NSTextAlignmentCenter;
     _emptyLabel.text = @"No Albums Available";
 
     // collect the things
 
     NSMutableArray *collector = [[NSMutableArray alloc] initWithCapacity:0];
-    ALAssetsLibrary *al = [FPLocalAlbumController defaultAssetsLibrary];
+    NSMutableArray *predicateComponents = [NSMutableArray array];
+    NSMutableArray *arguments = [NSMutableArray array];
 
-    ALAssetsLibraryGroupsEnumerationResultsBlock enumerationResultsBlock = ^(ALAssetsGroup *group, BOOL *stop) {
-        if (!group)
+    if (showImages)
+    {
+        [predicateComponents addObject:@"(mediaType == %d)"];
+        [arguments addObject:@(PHAssetMediaTypeImage)];
+    }
+
+    if (showVideos)
+    {
+        [predicateComponents addObject:@"(mediaType == %d)"];
+        [arguments addObject:@(PHAssetMediaTypeVideo)];
+    }
+
+    NSString *predicateFormat = [predicateComponents componentsJoinedByString:@" || "];
+
+    PHFetchOptions *fetchOptions = [PHFetchOptions new];
+
+    fetchOptions.predicate = [NSPredicate predicateWithFormat:predicateFormat
+                                                argumentArray:arguments];
+
+    PHFetchResult *userAlbums = [PHAssetCollection fetchAssetCollectionsWithType:PHAssetCollectionTypeAlbum
+                                                                         subtype:PHAssetCollectionSubtypeAny
+                                                                         options:nil];
+
+    [userAlbums enumerateObjectsUsingBlock: ^(PHAssetCollection *collection, NSUInteger idx, BOOL *stop) {
+        PHFetchResult *assetsFetchResult = [PHAsset fetchAssetsInAssetCollection:collection
+                                                                         options:fetchOptions];
+
+        if (assetsFetchResult.count > 0)
         {
-            // We're done, so reload data
-
-            [self setAlbums:collector];
-            [self.tableView reloadData];
-
-            return;
+            [collector addObject:collection];
         }
+    }];
 
-        NSString *sGroupPropertyName = (NSString *)[group valueForProperty:ALAssetsGroupPropertyName];
-        NSUInteger nType = [[group valueForProperty:ALAssetsGroupPropertyType] intValue];
+    PHFetchResult *smartAlbums = [PHAssetCollection fetchAssetCollectionsWithType:PHAssetCollectionTypeSmartAlbum
+                                                                          subtype:PHAssetCollectionSubtypeAlbumRegular
+                                                                          options:nil];
 
-        NSLog(@"GROUP: %@ %lu", sGroupPropertyName, (unsigned long)nType);
+    [smartAlbums enumerateObjectsUsingBlock: ^(PHAssetCollection *collection, NSUInteger idx, BOOL *stop) {
+        PHFetchResult *assetsFetchResult = [PHAsset fetchAssetsInAssetCollection:collection
+                                                                         options:fetchOptions];
 
-        if (showImages && !showVideos)
+        if (assetsFetchResult.count > 0)
         {
-            [group setAssetsFilter:[ALAssetsFilter allPhotos]];
+            [collector addObject:collection];
         }
-        else if (showVideos && !showImages)
-        {
-            [group setAssetsFilter:[ALAssetsFilter allVideos]];
-        }
+    }];
 
-        if(group.numberOfAssets == 0){
-            return;
-        }
-        
-        if ([[sGroupPropertyName lowercaseString] isEqualToString:@"camera roll"] &&
-            nType == ALAssetsGroupSavedPhotos)
-        {
-            [collector insertObject:group
-                            atIndex:0];
-        }
-        else
-        {
-            [collector addObject:group];
-        }
-    };
-
-    ALAssetsLibraryAccessFailureBlock failureBlock = ^(NSError *error) {
-        NSLog(@"There was an error with the ALAssetLibrary: %@", error);
-    };
-
-    [al enumerateGroupsWithTypes:ALAssetsGroupAll
-                      usingBlock:enumerationResultsBlock
-                    failureBlock:failureBlock];
+    [self setAlbums:collector];
+    [self.tableView reloadData];
 }
 
 - (void)didReceiveMemoryWarning
@@ -147,7 +153,7 @@
 
     if (_albums.count == 0)
     {
-        [self.view addSubview:_emptyLabel];
+        [self.tableView addSubview:_emptyLabel];
     }
     else
     {
@@ -175,22 +181,42 @@
 {
     static NSString *CellIdentifier = @"Cell";
 
-    UITableViewCell *cell = [passedTableView dequeueReusableCellWithIdentifier:CellIdentifier];
+    FPTableViewCell *cell = [passedTableView dequeueReusableCellWithIdentifier:CellIdentifier];
 
     if (!cell)
     {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault
-                                      reuseIdentifier:CellIdentifier];
+        cell = [[FPTableViewCell alloc] initWithStyle:UITableViewCellStyleDefault
+                                      reuseIdentifier :CellIdentifier];
     }
 
     // Get count
-    ALAssetsGroup *g = (ALAssetsGroup *)self.albums[indexPath.row];
+    PHAssetCollection *collection = (PHAssetCollection *)self.albums[indexPath.row];
+    PHFetchOptions *fetchOptions = [PHFetchOptions new];
 
-    UIImage *albumImage = [UIImage imageWithCGImage:((ALAssetsGroup *)self.albums[indexPath.row]).posterImage];
+    fetchOptions.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"creationDate"
+                                                                   ascending:NO]];
 
-    cell.textLabel.text = [NSString stringWithFormat:@"%@ (%ld)", [g valueForProperty:ALAssetsGroupPropertyName], (long)[g numberOfAssets]];
-    [cell.imageView setImage:albumImage];
-    [cell setAccessoryType:UITableViewCellAccessoryDisclosureIndicator];
+    PHFetchResult *assetsFetchResult = [PHAsset fetchAssetsInAssetCollection:collection
+                                                                     options:fetchOptions];
+
+    NSUInteger collectionTotalCount = assetsFetchResult.count;
+
+    if (collectionTotalCount > 0)
+    {
+        PHAsset *asset = assetsFetchResult[0];
+
+        [FPUtils asyncFetchAssetThumbnailFromPHAsset:asset
+                                          completion: ^(UIImage *image) {
+            cell.imageView.image = image;
+        }];
+
+        cell.textLabel.text = [NSString stringWithFormat:@"%@ (%ld)", collection.localizedTitle, (unsigned long)collectionTotalCount];
+        [cell setAccessoryType:UITableViewCellAccessoryDisclosureIndicator];
+
+        UIView *bgColorView = [UIView new];
+        bgColorView.backgroundColor = [FPTableViewCell appearance].selectedBackgroundColor;
+        cell.selectedBackgroundView = bgColorView;
+    }
 
     return cell;
 }
@@ -201,7 +227,7 @@
 {
     FPLocalController *sView = [FPLocalController new];
 
-    sView.assetGroup = (ALAssetsGroup *)self.albums[indexPath.row];
+    sView.assetCollection = (PHAssetCollection *)self.albums[indexPath.row];
     sView.fpdelegate = self.fpdelegate;
     sView.selectMultiple = self.selectMultiple;
     sView.maxFiles = self.maxFiles;
@@ -209,18 +235,6 @@
 
     [self.navigationController pushViewController:sView
                                          animated:YES];
-}
-
-+ (ALAssetsLibrary *)defaultAssetsLibrary
-{
-    static dispatch_once_t pred = 0;
-    static ALAssetsLibrary *library = nil;
-
-    dispatch_once(&pred, ^{
-        library = [ALAssetsLibrary new];
-    });
-
-    return library;
 }
 
 #pragma mark - Private

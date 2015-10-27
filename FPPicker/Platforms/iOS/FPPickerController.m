@@ -9,16 +9,46 @@
 #import "FPPickerController.h"
 #import "FPImagePickerController.h"
 #import "FPInternalHeaders.h"
+#import "FPTheme.h"
+#import "FPThemeApplier.h"
 
 @interface FPPickerController () <UIImagePickerControllerDelegate,
                                   UINavigationControllerDelegate,
                                   FPSourceControllerDelegate>
 
-@property (nonatomic, assign) BOOL hasStatusBar;
+@property (nonatomic, strong) NSOperationQueue *uploadOperationQueue;
+@property (nonatomic, strong) FPThemeApplier *themeApplier;
 
 @end
 
 @implementation FPPickerController
+
+#pragma mark - Accessors
+
+- (void)setTheme:(FPTheme *)theme
+{
+    _theme = theme;
+
+    // Apply theme
+    self.themeApplier = [[FPThemeApplier alloc] initWithTheme:theme];
+
+    if (self.isViewLoaded)
+    {
+        [self.themeApplier applyToController:self];
+    }
+}
+
+- (NSOperationQueue *)uploadOperationQueue
+{
+    if (!_uploadOperationQueue)
+    {
+        _uploadOperationQueue = [NSOperationQueue new];
+    }
+
+    return _uploadOperationQueue;
+}
+
+#pragma mark - Constructors / Destructor
 
 - (void)initializeProperties
 {
@@ -31,9 +61,6 @@
     self.cameraDevice = UIImagePickerControllerCameraDeviceRear;
     self.cameraFlashMode = UIImagePickerControllerCameraFlashModeAuto;
 
-    self.shouldUpload = YES;
-    self.shouldDownload = YES;
-
     self.selectMultiple = NO;
     self.maxFiles = 0;
 }
@@ -45,17 +72,6 @@
     if (self)
     {
         [self initializeProperties];
-
-        CGFloat statusBarHeight = CGRectGetHeight([UIApplication sharedApplication].statusBarFrame);
-
-        if (statusBarHeight < 0.0001)
-        {
-            self.hasStatusBar = NO;
-        }
-        else
-        {
-            self.hasStatusBar = YES;
-        }
     }
 
     return self;
@@ -90,8 +106,11 @@
     return self;
 }
 
+#pragma mark - Other Methods
+
 - (void)viewDidLoad
 {
+    [self.themeApplier applyToController:self];
     [super viewDidLoad];
 
     // Do any additional setup after loading the view.
@@ -123,28 +142,11 @@
                     animated:YES];
 }
 
-- (void)viewDidUnload
-{
-    [super viewDidUnload];
-    self.sourceNames = nil;
-    self.dataTypes = nil;
-}
-
-- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)interfaceOrientation
-{
-    return YES;
-}
-
 #pragma mark UIImagePickerControllerDelegate Methods
 
 - (void)    imagePickerController:(FPImagePickerController *)picker
     didFinishPickingMediaWithInfo:(NSDictionary *)info
 {
-    if (self.hasStatusBar)
-    {
-        [[UIApplication sharedApplication] setStatusBarHidden:NO];
-    }
-
     /* resizing the thumbnail */
 
     UIImage *originalImage, *editedImage, *imageToSave;
@@ -188,7 +190,7 @@
             mediaInfo.thumbnailImage = thumbImage;
 
             [self.fpdelegate fpPickerController:self
-                           didPickMediaWithInfo:mediaInfo];
+                           didPickMediaWithInfo :mediaInfo];
         });
     }
 
@@ -257,8 +259,7 @@
 
             [FPLibrary uploadImage:imageToSave
                         ofMimetype:dataType
-                       withOptions:info
-                      shouldUpload:self.shouldUpload
+               usingOperationQueue:self.uploadOperationQueue
                            success:successBlock
                            failure:failureBlock
                           progress:progressBlock];
@@ -268,8 +269,7 @@
             NSURL *url = info[@"UIImagePickerControllerMediaURL"];
 
             [FPLibrary uploadVideoURL:url
-                          withOptions:info
-                         shouldUpload:self.shouldUpload
+                  usingOperationQueue:self.uploadOperationQueue
                               success:successBlock
                               failure:failureBlock
                              progress:progressBlock];
@@ -294,11 +294,6 @@
 
 - (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker
 {
-    if (self.hasStatusBar)
-    {
-        [[UIApplication sharedApplication] setStatusBarHidden:NO];
-    }
-
     // The user chose to cancel when using the camera.
 
     [picker dismissViewControllerAnimated:YES
@@ -314,7 +309,7 @@
         [self.fpdelegate respondsToSelector:@selector(fpPickerController:didPickMediaWithInfo:)])
     {
         [self.fpdelegate fpPickerController:self
-                       didPickMediaWithInfo:info];
+                       didPickMediaWithInfo :info];
     }
 }
 

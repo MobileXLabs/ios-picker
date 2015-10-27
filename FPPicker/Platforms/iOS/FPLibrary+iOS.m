@@ -6,47 +6,28 @@
 //  Copyright (c) 2014 Filepicker.io. All rights reserved.
 //
 
+#define FPLibrary_protected
+
 #import "FPLibrary+iOS.h"
 #import "FPInternalHeaders.h"
-#import <AssetsLibrary/AssetsLibrary.h>
 
-@interface FPLibrary ()
-
-+ (dispatch_queue_t)upload_processing_queue;
-
-+ (void)uploadDataHelper_saveAs:(NSString *)fileLocation
-                         toPath:(NSString *)saveLocation
-                     ofMimetype:(NSString *)mimetype
-                    withOptions:(NSDictionary *)options
-                        success:(FPUploadAssetSuccessBlock)success
-                        failure:(FPUploadAssetFailureBlock)failure;
-
-+ (void)uploadLocalURLToFilepicker:(NSURL *)localURL
-                             named:(NSString *)filename
-                        ofMimetype:(NSString *)mimetype
-                      shouldUpload:(BOOL)shouldUpload
-                           success:(FPUploadAssetSuccessBlock)success
-                           failure:(FPUploadAssetFailureBlock)failure
-                          progress:(FPUploadAssetProgressBlock)progress;
-
-@end
+@import Photos;
 
 @implementation FPLibrary (iOS)
 
 #pragma mark - Camera Upload Methods
 
-+ (void)uploadImage:(UIImage *)image
-         ofMimetype:(NSString *)mimetype
-        withOptions:(NSDictionary *)options
-       shouldUpload:(BOOL)shouldUpload
-            success:(FPUploadAssetSuccessWithLocalURLBlock)success
-            failure:(FPUploadAssetFailureWithLocalURLBlock)failure
-           progress:(FPUploadAssetProgressBlock)progress
++ (void)    uploadImage:(UIImage *)image
+             ofMimetype:(NSString *)mimetype
+    usingOperationQueue:(NSOperationQueue *)operationQueue
+                success:(FPUploadAssetSuccessWithLocalURLBlock)success
+                failure:(FPUploadAssetFailureWithLocalURLBlock)failure
+               progress:(FPUploadAssetProgressBlock)progress
 {
+    DONT_BLOCK_UI();
+
     NSString *filename;
     NSData *filedata;
-
-    DONT_BLOCK_UI();
 
     NSURL *tempURL = [FPUtils genRandTemporaryURLWithFileLength:20];
 
@@ -79,19 +60,20 @@
     [FPLibrary uploadLocalURLToFilepicker:tempURL
                                     named:filename
                                ofMimetype:mimetype
-                             shouldUpload:shouldUpload
+                      usingOperationQueue:operationQueue
                                   success:successBlock
                                   failure:failureBlock
                                  progress:progress];
 }
 
-+ (void)uploadVideoURL:(NSURL *)url
-           withOptions:(NSDictionary *)options
-          shouldUpload:(BOOL)shouldUpload
-               success:(FPUploadAssetSuccessWithLocalURLBlock)success
-               failure:(FPUploadAssetFailureWithLocalURLBlock)failure
-              progress:(FPUploadAssetProgressBlock)progress
++ (void) uploadVideoURL:(NSURL *)url
+    usingOperationQueue:(NSOperationQueue *)operationQueue
+                success:(FPUploadAssetSuccessWithLocalURLBlock)success
+                failure:(FPUploadAssetFailureWithLocalURLBlock)failure
+               progress:(FPUploadAssetProgressBlock)progress
 {
+    DONT_BLOCK_UI();
+
     NSString *filename = @"movie.MOV";
     NSString *mimetype = @"video/quicktime";
 
@@ -108,7 +90,7 @@
     [FPLibrary uploadLocalURLToFilepicker:url
                                     named:filename
                                ofMimetype:mimetype
-                             shouldUpload:shouldUpload
+                      usingOperationQueue:operationQueue
                                   success:successBlock
                                   failure:failureBlock
                                  progress:progress];
@@ -116,43 +98,61 @@
 
 #pragma mark - Local Source Upload Methods
 
-+ (void)uploadAsset:(ALAsset *)asset
-        withOptions:(NSDictionary *)options
-       shouldUpload:(BOOL)shouldUpload
-            success:(FPUploadAssetSuccessWithLocalURLBlock)success
-            failure:(FPUploadAssetFailureWithLocalURLBlock)failure
-           progress:(FPUploadAssetProgressBlock)progress
++ (void)    uploadAsset:(PHAsset *)asset
+    usingOperationQueue:(NSOperationQueue *)operationQueue
+                success:(FPUploadAssetSuccessWithLocalURLBlock)success
+                failure:(FPUploadAssetFailureWithLocalURLBlock)failure
+               progress:(FPUploadAssetProgressBlock)progress
 {
-    dispatch_sync([self upload_processing_queue], ^{
-        NSURL *tempURL = [FPUtils genRandTemporaryURLWithFileLength:20];
-        NSString *filename = asset.defaultRepresentation.filename;
-        ALAssetRepresentation *representation = asset.defaultRepresentation;
-        CFStringRef utiToConvert = (__bridge CFStringRef)representation.UTI;
+    DONT_BLOCK_UI();
 
-        NSString *mimetype = (__bridge_transfer NSString *)UTTypeCopyPreferredTagWithClass(utiToConvert,
-                                                                                           kUTTagClassMIMEType);
+    NSURL *tempURL = [FPUtils genRandTemporaryURLWithFileLength:20];
+    NSString *filename = [asset.localIdentifier stringByReplacingOccurrencesOfString:@"/" withString:@"_"];
+    NSString *mimetype = [FPUtils mimetypeForUTI:[asset valueForKey:@"uniformTypeIdentifier"]];
 
-        [FPUtils copyAssetRepresentation:representation
-                            intoLocalURL:tempURL];
+    NSArray<PHAssetResource *> *assetResources = [PHAssetResource assetResourcesForAsset:asset];
 
-        FPUploadAssetSuccessBlock successBlock = ^(id JSON) {
-            success(JSON, tempURL);
-        };
+    if (assetResources.count > 0)
+    {
+        PHAssetResourceRequestOptions *options = [PHAssetResourceRequestOptions new];
 
-        FPUploadAssetFailureBlock failureBlock = ^(NSError *error, id JSON) {
-            DLog(@"File upload failed with %@, response was: %@", error, JSON);
+        options.networkAccessAllowed = YES;
 
-            failure(error, JSON, tempURL);
-        };
+        [[PHAssetResourceManager defaultManager] writeDataForAssetResource:assetResources[0]
+                                                                    toFile:tempURL
+                                                                   options:options
+                                                         completionHandler: ^(NSError * _Nullable error) {
+            if (!error)
+            {
+                FPUploadAssetSuccessBlock successBlock = ^(id JSON) {
+                    success(JSON, tempURL);
+                };
 
-        [FPLibrary uploadLocalURLToFilepicker:tempURL
-                                        named:filename
-                                   ofMimetype:mimetype
-                                 shouldUpload:shouldUpload
-                                      success:successBlock
-                                      failure:failureBlock
-                                     progress:progress];
-    });
+                FPUploadAssetFailureBlock failureBlock = ^(NSError *error, id JSON) {
+                    NSForceLog(@"File upload failed with %@, response was: %@", error, JSON);
+
+                    failure(error, JSON, tempURL);
+                };
+
+                [FPLibrary uploadLocalURLToFilepicker:tempURL
+                                                named:filename
+                                           ofMimetype:mimetype
+                                  usingOperationQueue:operationQueue
+                                              success:successBlock
+                                              failure:failureBlock
+                                             progress:progress];
+            }
+            else
+            {
+                NSForceLog(@"ERROR: Unable to write image data into temporary URL at %@", tempURL);
+            }
+        }
+        ];
+    }
+    else
+    {
+        NSForceLog(@"ERROR: Unable to obtain PHAssetResource from PHAsset.");
+    }
 }
 
 @end

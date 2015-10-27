@@ -17,10 +17,7 @@
 
     if (self)
     {
-        if ([self respondsToSelector:@selector(edgesForExtendedLayout)])
-        {
-            self.edgesForExtendedLayout = UIRectEdgeNone;
-        }
+        self.edgesForExtendedLayout = UIRectEdgeNone;
     }
 
     return self;
@@ -38,8 +35,6 @@
     [super viewWillAppear:animated];
 
     CGRect bounds = self.view.bounds;
-
-    NSLog(@"Bounds %@", NSStringFromCGSize(bounds.size));
 
     self.view.backgroundColor = [UIColor whiteColor];
 

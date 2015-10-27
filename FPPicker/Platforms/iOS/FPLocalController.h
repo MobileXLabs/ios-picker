@@ -7,14 +7,15 @@
 //
 
 #import <UIKit/UIKit.h>
-#import <AssetsLibrary/AssetsLibrary.h>
 #import "FPInternalHeaders.h"
+
+@class PHAssetCollection;
 
 @interface FPLocalController : FPTableWithUploadButtonViewController
 
 @property (nonatomic, strong) NSArray *photos;
 @property (nonatomic, strong) FPSource *source;
 @property (nonatomic, weak) id <FPSourceControllerDelegate> fpdelegate;
-@property (nonatomic, retain) ALAssetsGroup *assetGroup;
+@property (nonatomic, retain) PHAssetCollection *assetCollection;
 
 @end
